@@ -1,7 +1,7 @@
 #!/usr/bin/env python2.7
 # -*- coding: utf-8 -*-
 
-from sysdig_tracer import Tracer, Args, ReturnValue
+from sysdig_tracers import Tracer, Args, ReturnValue
 
 # sorry, using simple stuff rather than Twisted, Tornado or Python3 asyncio
 from SocketServer import ThreadingMixIn
@@ -13,7 +13,11 @@ import sys
 import gzip
 import random
 import tempfile
+import logging
 
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 @Tracer(enter_args={"n": Args(0)}, exit_args={"ret": ReturnValue})
 def fib(n):
@@ -34,51 +38,48 @@ def scratch(file_path, size):
 
 class MyRequestHandler(BaseHTTPRequestHandler):
 
+    def do_headers(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+
     def fib_handler(self, num):
         with Tracer("fib_handler") as t:
             with t.span("fib_headers"):
-                self.send_response(200)
-                self.send_header('Content-type', 'text/plain')
-                self.end_headers()
+                self.do_headers()
     
             with t.span("fib_write"):
             	result = fib(num)
                 self.wfile.write(result)
     
     def scratch_handler(self, num):
-       with Tracer("scratch_handler") as t:
-           with t.span("scratch_headers"):
-               self.send_response(200)
-               self.send_header('Content-type', 'text/plain')
-               self.end_headers()
+        with Tracer("scratch_handler") as t:
+            with t.span("scratch_headers"):
+                self.do_headers()
     
-           with t.span("scratch_write"):
-               _, file_path = tempfile.mkstemp(dir='/tmp')
-               scratch(file_path, 96)
-               os.remove(file_path)
-               self.wfile.write("That's all folks!")
+            with t.span("scratch_write"):
+                _, file_path = tempfile.mkstemp(dir='/tmp')
+                scratch(file_path, 96)
+                os.remove(file_path)
+                self.wfile.write("That's all folks!")
 
     def empty_handler(self, num):
-       with Tracer("empty_handler") as t:
-           with t.span("empty_headers"):
-               self.send_response(200)
-               self.send_header('Content-type', 'text/plain')
-               self.end_headers()
+        with Tracer("empty_handler") as t:
+            with t.span("empty_headers"):
+                self.do_headers()
     
-           with t.span("empty_write"):
-               self.wfile.write("")
+            with t.span("empty_write"):
+                self.wfile.write("")
 
     def download_handler(self, num):
-       with Tracer("download_handler") as t:
-           with t.span("download_headers"):
-               self.send_response(200)
-               self.send_header('Content-type', 'text/plain')
-               self.end_headers()
+        with Tracer("download_handler") as t:
+            with t.span("download_headers"):
+                self.do_headers()
     
-           with t.span("download_write"):
-               filename = '/tmp/blob.bin.{}'.format(random.randint(1,4))
-               with open(filename, 'r') as f:
-                   self.wfile.write(f.read())
+            with t.span("download_write"):
+                filename = '/tmp/blob.bin.{}'.format(random.randint(1,4))
+                with open(filename, 'r') as f:
+                    self.wfile.write(f.read())
 
     def do_GET(self):
         _, driver, num = self.path.split('/')
@@ -98,6 +99,7 @@ class MyRequestHandler(BaseHTTPRequestHandler):
 
 
 class ThreadingSimpleServer(ThreadingMixIn, HTTPServer):
+    logger.info('Listening for connections...')
     pass
 
 
@@ -115,6 +117,7 @@ def init_file(file_path, size, compress=False):
         os.rename(file_raw_path, file_path)
 
 def init_server():
+    logger.info('Creating static files...')
     init_file('/tmp/blob.bin.1', 1024)
     init_file('/tmp/blob.bin.2', 1536)
     init_file('/tmp/blob.bin.3', 1280)

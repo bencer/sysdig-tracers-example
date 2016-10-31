@@ -5,11 +5,17 @@ from Queue import Queue
 from threading import Thread
 import urllib2
 import random
+import os
 import sys
+import time
+import logging
 
-concurrent = 8
-requests = 800000
-host = '127.0.1.1:8888'
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+host = os.environ['SERVER_HOST'] + ':' + os.environ['SERVER_PORT']
+concurrent = 4
 
 def randomURL():
     drivers = ['fib', 'empty', 'download']
@@ -21,7 +27,7 @@ def randomURL():
 def dequeue():
     while True:
         url = q.get()
-        print "GET: {}".format(url)
+        logger.info("GET {}".format(url))
         do_request(url)
         q.task_done()
 
@@ -31,16 +37,13 @@ def do_request(url):
         body = response.read()
         response.close()
     except urllib2.URLError, e:
-        print e.reason
+        logger.error(e.reason)
 
-q = Queue(requests)
+q = Queue()
 for i in range(concurrent):
     t = Thread(target=dequeue)
     t.daemon = True
     t.start()
-try:
-    for x in range(requests):
+    while True:
         q.put(randomURL())
     q.join()
-except KeyboardInterrupt:
-    sys.exit(1)
